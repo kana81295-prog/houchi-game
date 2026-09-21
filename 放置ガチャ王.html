@@ -200,6 +200,24 @@ input[type=file]{display:none}
 .deadChar{opacity:.35;filter:grayscale(1)}
 .battleAction:disabled{opacity:.38;filter:grayscale(.7);pointer-events:none}
 .battleCard.activeTurn{outline:2px solid #ffd45a;box-shadow:0 0 16px #ffd45a66}
+
+<style>
+.scoreAttackPanel{background:linear-gradient(145deg,#101f35,#241a3d);border:2px solid #ffd45a!important}
+.scoreHero{text-align:center;padding:14px;border-radius:16px;background:linear-gradient(180deg,#192f4d,#0b1523);margin-bottom:10px}
+.scoreHero h2{margin:0 0 5px;font-size:26px}
+.scoreBoss{font-size:76px;line-height:1;margin:10px 0;filter:drop-shadow(0 8px 8px #0008)}
+.scoreStats{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.scoreStat{background:#101b29;border:1px solid #38536b;border-radius:10px;padding:8px}
+.scoreStat small{display:block;color:#9eb5c7;font-size:10px}.scoreStat b{font-size:20px}
+.scoreTimer{font-size:38px;font-weight:1000;color:#ffd45a}
+.scoreTimer.danger{color:#ff6b6b}
+.scoreActions{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:10px}
+.scoreBtn{min-height:72px!important;font-size:15px!important;font-weight:900!important}
+.scoreResult{text-align:center;padding:18px;border:2px solid #ffd45a;border-radius:16px;background:#101c2b;margin-top:10px}
+.scoreRank{display:flex;justify-content:space-between;gap:8px;padding:8px 10px;border-bottom:1px solid #294158}
+.scoreRank:last-child{border-bottom:0}
+@media(max-width:520px){.scoreStats{grid-template-columns:repeat(3,1fr)}.scoreStat b{font-size:16px}.scoreBoss{font-size:64px}}
+</style>
 </style><body>
 <img id="bgImage"><div id="bgShade"></div>
 <div class="app">
@@ -221,6 +239,7 @@ input[type=file]{display:none}
   <button class="tile" onclick="show('gacha')">🎰 ガチャ<small>仲間を集めよう</small></button>
   <button class="tile" onclick="show('chars')">🧙 キャラ<small>図鑑・重複数</small></button>
   <button class="tile" onclick="show('battle')">⚔️ 冒険<small>ストーリー＆バトル</small></button>
+  <button class="tile" onclick="show('scoreAttack')">🏆 スコアタ<small>60秒でダメージを競おう</small></button>
   <button class="tile" onclick="show('missions')">🎯 ミッション<small>報酬をゲット</small></button>
   <button class="tile" onclick="show('settings')">⚙️ 設定<small>背景を変更</small></button>
  </div>
@@ -239,6 +258,40 @@ input[type=file]{display:none}
  <div id="chars" class="chars"></div>
 </section>
 
+
+
+<section id="scoreAttack" class="page">
+ <div class="panel scoreAttackPanel">
+  <div class="scoreHero">
+   <h2>🏆 スコアアタック</h2>
+   <div class="muted">60秒間、ボスにどれだけダメージを与えられるか挑戦！</div>
+   <div class="scoreBoss">👹</div>
+   <div class="muted">∞ HP　このボスは絶対に倒れない</div>
+  </div>
+  <div class="scoreStats">
+   <div class="scoreStat"><small>⏱️ 残り時間</small><b id="scoreTimer">60</b>秒</div>
+   <div class="scoreStat"><small>🔥 スコア</small><b id="scoreValue">0</b></div>
+   <div class="scoreStat"><small>👤 行動キャラ</small><b id="scoreActiveName">---</b></div>
+  </div>
+  <div class="scoreActions">
+   <button id="scoreAttackBtn" class="battleAction normal scoreBtn" onclick="scoreAttackAction(false)">⚔️ 通常攻撃<br><small>安定ダメージ</small></button>
+   <button id="scoreSkillBtn" class="battleAction fire scoreBtn" onclick="scoreAttackAction(true)">🔥 スキル攻撃<br><small>強力なダメージ</small></button>
+  </div>
+  <button id="scoreStartBtn" class="gold" style="width:100%;margin-top:10px" onclick="startScoreAttack()">🏆 スコアアタック開始</button>
+  <button id="scoreStopBtn" class="dark" style="width:100%;margin-top:6px;display:none" onclick="finishScoreAttack()">⏹️ 終了して記録する</button>
+  <div id="scoreResult" class="scoreResult" style="display:none"></div>
+ </div>
+ <div class="panel">
+  <h3>📊 この端末のベストスコア</h3>
+  <div class="muted">オンラインランキングではなく、この端末に保存される記録です。</div>
+  <div id="scoreRanking"></div>
+ </div>
+ <div class="panel">
+  <h3>👥 編成</h3>
+  <div class="muted">現在の冒険用編成をそのまま使います。最大5体。</div>
+  <div id="scorePartyInfo" class="result"></div>
+ </div>
+</section>
 
 <section id="missions" class="page">
  <div class="panel"><h2>🎯 ミッション</h2><div id="missionsBox"></div></div>
@@ -366,6 +419,7 @@ const characters=[
 const rates=[30,20,15,12,10,6,4,2,.9,.1];
 const rarityRate={1:30,2:20,3:12,4:10,5:2,6:.1};
 let coins=0,gems=0,level=1,lastSave=Date.now(),col={},missionClaimed={gacha:false,chars:false,level:false},clearedStage=0,battle=null,party=[],playerName="",battleActiveIndex=0,battleRound=1,battleActedThisRound=0,battleHP={};
+let scoreAttackState={active:false,score:0,time:60,activeIndex:0,timerId:null,skillReady:true};
 characters.forEach((_,i)=>col[i]=0);
 
 function save(){
@@ -754,6 +808,87 @@ function runBattle(){
  const ab=document.getElementById("attackBtn"),sb=document.getElementById("skillBtn"),gb=document.getElementById("guardBtn"),hb=document.getElementById("healBtn");[ab,sb,gb,hb].forEach(x=>{if(x)x.disabled=false});
 }
 
+
+function getScoreRecords(){
+ try{return JSON.parse(localStorage.getItem("houchiScoreAttack")||"[]")}catch(e){return[]}
+}
+function saveScoreRecord(score){
+ const records=getScoreRecords();
+ records.push({name:(playerName||"名無し").slice(0,16),score:Math.floor(score),date:new Date().toLocaleDateString("ja-JP")});
+ records.sort((a,b)=>b.score-a.score);
+ localStorage.setItem("houchiScoreAttack",JSON.stringify(records.slice(0,10)));
+}
+function renderScoreRanking(){
+ const box=document.getElementById("scoreRanking");if(!box)return;
+ const records=getScoreRecords();
+ if(!records.length){box.innerHTML='<div class="muted" style="padding:10px">まだ記録がないよ。最初のスコアを作ろう！</div>';return}
+ box.innerHTML=records.map((r,i)=>`<div class="scoreRank"><b>${i+1}位　${String(r.name).replace(/[<>&"]/g,"")}</b><span>${Number(r.score).toLocaleString()} pt</span></div>`).join("");
+}
+function renderScoreParty(){
+ const box=document.getElementById("scorePartyInfo");if(!box)return;
+ validParty();
+ if(!party.length){box.innerHTML="まず冒険の編成でキャラを1体以上入れてね！";return}
+ box.innerHTML=party.map((id,i)=>`<div>🎯 ${i+1}. <b>${characters[id]?.[0]||"仲間"}</b>　⚔️${charPower(id).atk}</div>`).join("");
+}
+function setScoreButtons(disabled){
+ ["scoreAttackBtn","scoreSkillBtn"].forEach(id=>{const b=document.getElementById(id);if(b)b.disabled=disabled});
+}
+function startScoreAttack(){
+ if(scoreAttackState.active)return;
+ validParty();
+ if(!party.length){alert("まず冒険の編成でキャラを1体以上入れてね！");return}
+ scoreAttackState={active:true,score:0,time:60,activeIndex:0,timerId:null,skillReady:true};
+ const result=document.getElementById("scoreResult");if(result){result.style.display="none";result.innerHTML=""}
+ document.getElementById("scoreValue").textContent="0";
+ document.getElementById("scoreTimer").textContent="60";
+ document.getElementById("scoreActiveName").textContent=characters[party[0]][0];
+ document.getElementById("scoreStartBtn").style.display="none";
+ document.getElementById("scoreStopBtn").style.display="block";
+ setScoreButtons(false);
+ scoreAttackState.timerId=setInterval(()=>{
+   if(!scoreAttackState.active)return;
+   scoreAttackState.time--;
+   const t=document.getElementById("scoreTimer");if(t)t.textContent=scoreAttackState.time;
+   if(t)t.classList.toggle("danger",scoreAttackState.time<=10);
+   if(scoreAttackState.time<=0)finishScoreAttack();
+ },1000);
+}
+function scoreAttackAction(skill){
+ if(!scoreAttackState.active)return;
+ const id=party[scoreAttackState.activeIndex];
+ if(id==null)return;
+ if(skill&&!scoreAttackState.skillReady)return;
+ const cs=charPower(id);
+ const dmg=skill ? Math.floor(cs.atk*1.55)+Math.floor(Math.random()*14) : cs.atk+Math.floor(Math.random()*8);
+ scoreAttackState.score+=dmg;
+ if(skill)scoreAttackState.skillReady=false;
+ document.getElementById("scoreValue").textContent=scoreAttackState.score.toLocaleString();
+ const name=document.getElementById("scoreActiveName");if(name)name.textContent=characters[id][0];
+ scoreAttackState.activeIndex=(scoreAttackState.activeIndex+1)%party.length;
+ if(scoreAttackState.activeIndex===0)scoreAttackState.skillReady=true;
+ else scoreAttackState.skillReady=true;
+ const next=party[scoreAttackState.activeIndex];
+ if(name)name.textContent=characters[next][0];
+}
+function finishScoreAttack(){
+ if(!scoreAttackState.active)return;
+ scoreAttackState.active=false;
+ if(scoreAttackState.timerId)clearInterval(scoreAttackState.timerId);
+ scoreAttackState.timerId=null;
+ const score=Math.floor(scoreAttackState.score);
+ saveScoreRecord(score);
+ const result=document.getElementById("scoreResult");
+ if(result){
+   result.style.display="block";
+   result.innerHTML=`<div style="font-size:42px">🏆</div><h2 style="margin:4px 0">終了！</h2><p>今回のスコア</p><div style="font-size:32px;font-weight:1000">${score.toLocaleString()} pt</div><p class="muted">ボスは最後まで倒れない仕様！</p>`;
+ }
+ document.getElementById("scoreStartBtn").style.display="block";
+ document.getElementById("scoreStopBtn").style.display="none";
+ setScoreButtons(true);
+ renderScoreRanking();
+ const t=document.getElementById("scoreTimer");if(t){t.textContent=scoreAttackState.time<=0?"0":scoreAttackState.time;t.classList.remove("danger")}
+}
+
 function show(id,btn){
  document.querySelectorAll(".page").forEach(x=>x.classList.remove("active"));
  const page=document.getElementById(id);
@@ -765,6 +900,7 @@ function show(id,btn){
    try{renderStages();renderParty();}catch(e){console.error(e);}
    window.scrollTo({top:0,behavior:"instant"});
  }
+ if(id==="scoreAttack"){try{renderScoreRanking();renderScoreParty();}catch(e){console.error(e);} window.scrollTo({top:0,behavior:"instant"});}
 }
 function setTheme(n){
  const b=document.body,root=document.documentElement;
@@ -835,6 +971,8 @@ function admin(){
 setInterval(()=>{coins+=level;lastSave=Date.now();save();update()},1000);
 document.getElementById("rates").innerHTML=Object.entries(rarityRate).map(([r,p])=>`★${r}：${p}%`).join("<br>");
 load();
+renderScoreRanking();
+renderScoreParty();
 
 let adminCombat = {invincible:false, onePunch:false};
 function toggleAdminCombat(type, enabled){
