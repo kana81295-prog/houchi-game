@@ -261,7 +261,7 @@ input[type=file]{display:none}
 </section>
 
 
-<div id="adminCombatControls" class="panel" style="margin:12px 0;">
+<div id="adminCombatControls" class="panel" style="margin:12px 0;display:none;">
   <h3>🛠️ 管理者モード 戦闘設定</h3>
   <label style="display:block;margin:8px 0;">
     <input type="checkbox" id="adminInvincible" onchange="toggleAdminCombat('invincible',this.checked)">
@@ -672,7 +672,7 @@ function battleEnemyName(){return stages[battle?.i||0]?.enemy||"敵";}
 function battleAttack(){
  if(!battle||battle.won)return;
  if(!setActiveLiving())return loseBattle();
- const id=activeCharId(),dmg=charPower(id).atk+Math.floor(Math.random()*8);
+ const id=activeCharId(),dmg=adminCombat.onePunch?999999:charPower(id).atk+Math.floor(Math.random()*8);
  battle.hp=Math.max(0,battle.hp-dmg);
  document.getElementById("enemyHp").textContent=battle.hp;
  const hb=document.getElementById("enemyHpBar");if(hb)hb.style.width=Math.max(0,battle.hp/battle.max*100)+"%";
@@ -685,7 +685,7 @@ function battleSkill(){
  if(!battle||battle.won)return;
  if(!battle.skillReady){alert("このキャラはスキルを使ったばかり！次のターンまで待ってね。");return}
  if(!setActiveLiving())return loseBattle();
- const id=activeCharId(),cs=charPower(id),dmg=Math.floor(cs.atk*1.55)+Math.floor(Math.random()*14);
+ const id=activeCharId(),cs=charPower(id),dmg=adminCombat.onePunch?999999:Math.floor(cs.atk*1.55)+Math.floor(Math.random()*14);
  battle.hp=Math.max(0,battle.hp-dmg);battle.skillReady=false;
  document.getElementById("enemyHp").textContent=battle.hp;
  const hb=document.getElementById("enemyHpBar");if(hb)hb.style.width=Math.max(0,battle.hp/battle.max*100)+"%";
@@ -824,9 +824,13 @@ function adminRefresh(){
  <button onclick="if(confirm('本当に全データを消す？')){localStorage.removeItem('houchiGameV3');localStorage.removeItem('houchiPlayerName');location.reload()}">🗑️ 全データ削除</button>
  </div>`;
 }
+let adminUnlocked = false;
 function admin(){
  if(prompt("👑 管理者コード")!=="kanarin0830"){alert("❌ コードが違います");return}
+ adminUnlocked = true;
  adminRefresh();
+ const controls = document.getElementById("adminCombatControls");
+ if(controls) controls.style.display = "block";
 }
 setInterval(()=>{coins+=level;lastSave=Date.now();save();update()},1000);
 document.getElementById("rates").innerHTML=Object.entries(rarityRate).map(([r,p])=>`★${r}：${p}%`).join("<br>");
@@ -834,6 +838,12 @@ load();
 
 let adminCombat = {invincible:false, onePunch:false};
 function toggleAdminCombat(type, enabled){
+  if(!adminUnlocked){
+    const el = document.getElementById(type === 'invincible' ? 'adminInvincible' : 'adminOnePunch');
+    if(el) el.checked = false;
+    adminCombat[type] = false;
+    return;
+  }
   adminCombat[type] = !!enabled;
   const label = type === 'invincible' ? '無敵' : 'ワンパン';
   const log = document.getElementById('battleLog');
